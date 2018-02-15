@@ -1,8 +1,7 @@
-#----------------------------remove working directory past labels:
+#----------------------------Start clean:
 rm(list = ls())
 
-
-#----------------------------
+#Packages -------------------
 library(readr)
 library(plyr)
 library(dplyr) 
@@ -12,34 +11,15 @@ library(gridExtra)
 library(rpart)
 library(rattle)
 library(lattice)
+library(e1071)
 library(caret)
 library(scales)
-#---------------------------
 
-titanicD <- read_csv("Ubiqum/Titanic/train.csv")
-titanic_test <- read_csv("Ubiqum/Titanic/test.csv")
-View(titanicD)
-View(titanic_test)
-str(titanicD)
+#Initial Exploration--------
+which(is.na(titaniC))
 
-titaniC = titanicD
-summary(titaniC)
-
-# --------------------------Female vs Male, to convert to dummy variable:
-titaniC$Sex <- ifelse(titaniC$Sex == 'female', 1,0)
-table(titaniC$Sex)
-
-
-# --------------------------how many survived or not?
-table(titaniC$Survived)
-# 549 did not
-# 342 survived
-
-table(titaniC$Survived, titaniC$Pclass)
-
-
+# --------------------------Survival Count Per Class
 titaniC %>% group_by(Pclass, Survived) %>% tally()
-
 
 ggplot(titaniC, aes(Pclass)) + 
   geom_bar(aes(weight = Survived, fill = Sex), position = "dodge") + 
@@ -52,9 +32,8 @@ ggplot(titaniC, aes(Pclass)) +
 
 
 
-# --------------------------Sex in Pclass?
+# --------------------------Gender in Pclass?
 ggplot(titaniC) + geom_bar(aes(Pclass, fill = Sex), position = "dodge")
-
 titaniC %>% group_by(Pclass, Sex) %>% tally() 
 
 
@@ -62,11 +41,9 @@ titaniC %>% group_by(Pclass, Sex) %>% tally()
 titaniC %>% group_by(Pclass, Sex, Survived) %>% summarize(spc = n())
 
 
-# -------------------------- Per Class, count the passangers that Embarked per Town
+# --------------------------Per Class, where passangers Embarked
 titaniC %>% group_by(Pclass, Embarked) %>% summarise(TownCount = n())
 
-
-# ---------------------------Where have the passangers Embarked? 
 Town <- titaniC %>% group_by(Pclass) %>% select(Embarked)
 
 ggplot(Town) + geom_bar(aes(Pclass, fill = Embarked)) + 
@@ -77,10 +54,11 @@ ggplot(Town) + geom_bar(aes(Pclass, fill = Embarked)) +
                       labels = c("Cherbourg", "Queenstown", "Southampton"))
 
 
-#--- Fill Missing Embarked
+#------ Fill Missing Embarked
 which(is.na(titaniC$Embarked))
 titaniC[c(62, 830),]
 titaniC$Embarked[c(62, 830)] <- 'C'
+
 
 # ----------------------------- Ticket Fare
 Fare <- titaniC %>% 
@@ -107,15 +85,16 @@ ggplot(Fare1) +
                       labels = c("Female", "Male"))
 
 
-#---Fare per Embarkment + Sex + Class
+
+#---Fare per Embarkment + Gender + Class
 NameTown <- as_labeller(c(`C` = "Cherbourg", `Q` = "Queenstown", `S` = "Southampton"))
+
 ggplot(titaniC) + 
   geom_histogram(aes(Fare, fill = Sex), binwidth = 25, position = "dodge") + 
   facet_grid(Pclass~Embarked, scales = "free", labeller = labeller(Embarked = NameTown)) + 
   scale_x_continuous(labels = dollar_format()) + 
   ggtitle("Distribution Cost of Fare") +
   xlab("") + scale_fill_discrete(name = "Gender")
-
 
 
 #---Distribution of Cost per Class
@@ -151,28 +130,17 @@ par(mfrow = c(1,2))
 titaniC %>% group_by(Pclass, Sex) %>% summarize(mean(Age, na.rm = TRUE))
 
 
-#----------------------------- Per Class, Males younger than 25
-titaniC %>% group_by(Pclass) %>% 
-  select(Sex, Age) %>% 
-  filter( Age < 25, Sex== 'male') %>% 
-  summarise(n())
-
-
 #----------------------------- StDev of Age per Sex and Class
 titaniC %>% group_by(Pclass, Sex) %>% summarize(STDEV = sd(Age, na.rm = TRUE))
 
 
 
 # ----------------------------- Making a list with the NA in age
-#---VERSION 1
-NA_list <- titaniC[c(which(is.na(titaniC$Age))),]
-
-#---VERSION 2
 NA_list <- subset(titaniC, is.na(Age))
 
 
 #------------------------------ Age fixes:
-#--- Smaller values than 1 should be 0
+#--- Smaller values than 1 will be 0
 which(titaniC$Age < 1)
 titaniC$Age[titaniC$Age < 1] <- 0
 
@@ -181,17 +149,6 @@ av_age <- ave(titaniC$Age, titaniC$Pclass, FUN = function(x)mean(x, na.rm = TRUE
 titaniC$Age <- ifelse(is.na(titaniC$Age), av_age , titaniC$Age)
 summary(titaniC$Age)
 summary(titaniC)
-
-
-#-----------------------------As.csv fixed Age & Embarked
-write.csv(titaniC, file = "C:/Users/Violeta/Documents/Ubiqum/Titanic/TrainingFixed.csv")
-
-
-
-#-----------------------------Load Dataset with changed NA for Age & Embarked
-data <- read.csv("Ubiqum/Titanic/TrainingFixed.csv")
-titaniC <- data
-head(titaniC)
 
 
 #------------------------------Separating Names with title
@@ -212,7 +169,8 @@ titaniC$Title[c(31, 600)] <- 'Mr.'
 titaniC$Title[760] <- 'Mrs.' #because Countess only one and split in testD can't classify
 
 
-#---------------------------- Changing structure to numeric to compute correlation matrix
+#Pre-processing-------------
+#---Changing structure to numeric to compute correlation matrix
 titaniCN <- sapply(titaniC, as.numeric)
 str(titaniCN)
 titaniCN <- data.frame(titaniCN)
@@ -221,18 +179,22 @@ titaniCN <- titaniCN[, -c("13")]
 cor1 <- cor(titaniCN)
 corrplot(cor1, order = "hclust", type = "lower")
 
+#----------------------------DataFrame as Factor
+titaniCF <- as.data.frame(sapply(titaniC, as.factor))
+str(titaniCF)
+titaniCF$Age <- as.numeric(titaniCF$Age)
+titaniCF$Fare <- as.numeric(titaniCF$Fare)
 
-#-----------------------------Preparing Partitions
+
+#Partitions------------------
 set.seed(136)
 
 inTrain <- createDataPartition(titaniC$Survived, p = .75, list = FALSE)
 
-trainD <- titaniC[inTrain,]
-testD <- titaniC[-inTrain,]
+trainD <- titaniCF[inTrain,]
+testD <- titaniCF[-inTrain,]
 
-#----------------------------- Decision Tree
-#tControl<- trainControl(method= "repeatedcv", number = 10, repeats = 3)
-
+#Decision Tree----------------
 DTree_fit<- rpart(Survived~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked + Title,
                   data = trainD, 
                   method="class",
@@ -243,24 +205,13 @@ fancyRpartPlot(DTree_fit)
 DTree_fit$variable.importance
 DTree_fit$cptable
 printcp(DTree_fit)
-summary(DTree_fit)
-
-#---Based on variable Importance, the following were chosen:
-Other_fit<- rpart(Survived~ Pclass + Age + Fare + Title,
-                  data = trainD, 
-                  method="class",
-                  parms = list(split = 'gini'))
-
-fancyRpartPlot(Other_fit)
-Other_fit$variable.importance
-
-Other_pred <- predict(Other_fit, testD, method = "class")
-
-#-------------------------------------Random Forest
-RF_fit <- train(Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked + Title,
-                data = trainD, 
-                method="rf",
-                metric = "Accuracy")
 
 
+#-------------------------Prediction
+predDT <- predict(DTree_fit, testD, method = "class")
+t <- table(testD$Survived, predDT)
+confusionMatrix(t)
 
+
+#----------------------------Ranking Variable Importance in building DT
+barplot(DTree_fit$variable, main = "Rank of Variable Importance", col = blues9)
